@@ -2,7 +2,9 @@ package godb
 
 import (
 	"bytes"
+	"encoding/binary"
 	"fmt"
+	"unsafe"
 )
 
 /* HeapPage implements the Page interface for pages of HeapFiles. We have
@@ -49,49 +51,104 @@ dirty page, it's OK if tuples are renumbered when they are written back to disk.
 
 type heapPage struct {
 	// TODO: some code goes here
+	PageSize     int
+	SlotNum      int
+	UsedSlotsNum int
+	Tuples       []*Tuple
+	Desc         *TupleDesc
+	HeapFile     *HeapFile
+	PageNo       int
+	IsDirty      bool
 }
 
 // Construct a new heap page
 func newHeapPage(desc *TupleDesc, pageNo int, f *HeapFile) (*heapPage, error) {
 	// TODO: some code goes here
-	return &heapPage{}, fmt.Errorf("newHeapPage is not implemented") //replace me
+	// return &heapPage{}, fmt.Errorf("newHeapPage is not implemented") //replace me
+	size := 0
+	for i := 0; i < len(desc.Fields); i++ {
+		switch desc.Fields[i].Ftype {
+		case IntType:
+			size += int(unsafe.Sizeof(int64(0)))
+		case StringType:
+			size += StringLength
+		}
+	}
+	slotNum := (PageSize - 8) / size
+	hp := &heapPage{
+		PageSize:     PageSize,
+		SlotNum:      slotNum,
+		UsedSlotsNum: 0,
+		Tuples:       make([]*Tuple, 0, slotNum),
+		Desc:         desc,
+		HeapFile:     f,
+		PageNo:       pageNo,
+		IsDirty:      false,
+	}
+	err := f.bufPool.insertPage(hp,f, pageNo, NewTID(), WritePerm)
+	if err != nil {
+		return nil, err
+	}
+	return hp, nil
 }
 
 func (h *heapPage) getNumSlots() int {
-	// TODO: some code goes here
-	return 0 //replace me
+	return h.SlotNum
+}
+
+type RID struct {
+	PageNo int
+	SlotNo int
 }
 
 // Insert the tuple into a free slot on the page, or return an error if there are
 // no free slots.  Set the tuples rid and return it.
 func (h *heapPage) insertTuple(t *Tuple) (recordID, error) {
-	// TODO: some code goes here
-	return 0, fmt.Errorf("insertTuple not implemented") //replace me
+	if h.UsedSlotsNum >= h.SlotNum {
+		return 0, fmt.Errorf("no free slots available")
+	}
+	h.Tuples = append(h.Tuples, t)
+	h.UsedSlotsNum++
+	rid := RID{
+		PageNo: h.PageNo,
+		SlotNo: h.UsedSlotsNum - 1,
+	}
+	t.Rid = rid
+	return rid, nil
 }
 
 // Delete the tuple at the specified record ID, or return an error if the ID is
 // invalid.
 func (h *heapPage) deleteTuple(rid recordID) error {
-	// TODO: some code goes here
-	return fmt.Errorf("deleteTuple not implemented") //replace me
+	_rid, ok := rid.(RID)
+	if !ok {
+		return fmt.Errorf("invalid record ID type")
+	}
+	if _rid.SlotNo < 0 || _rid.SlotNo >= h.UsedSlotsNum {
+		return fmt.Errorf("invalid record ID")
+	}
+	if h.Tuples[_rid.SlotNo] == nil {
+		return fmt.Errorf("tuple at record ID already deleted")
+	}
+	h.Tuples[_rid.SlotNo] = nil
+	return nil
 }
 
 // Page method - return whether or not the page is dirty
 func (h *heapPage) isDirty() bool {
-	// TODO: some code goes here
-	return false //replace me
+	return h.IsDirty
 }
 
 // Page method - mark the page as dirty
 func (h *heapPage) setDirty(tid TransactionID, dirty bool) {
-	// TODO: some code goes here
+	h.IsDirty = dirty
 }
 
 // Page method - return the corresponding HeapFile
 // for this page.
 func (p *heapPage) getFile() DBFile {
 	// TODO: some code goes here
-	return nil //replace me
+	return p.HeapFile
 }
 
 // Allocate a new bytes.Buffer and write the heap page to it. Returns an error
@@ -100,14 +157,83 @@ func (p *heapPage) getFile() DBFile {
 // the binary.Write method in LittleEndian order, followed by the tuples of the
 // page, written using the Tuple.writeTo method.
 func (h *heapPage) toBuffer() (*bytes.Buffer, error) {
-	// TODO: some code goes here
-	return nil, fmt.Errorf("heap_page.toBuffer not implemented") //replace me
+	buf := new(bytes.Buffer)
+
+	// Write number of slots
+	err := binary.Write(buf, binary.LittleEndian, int32(h.SlotNum))
+	if err != nil {
+		return nil, err
+	}
+	err = binary.Write(buf, binary.LittleEndian, int32(h.UsedSlotsNum))
+	if err != nil {
+		return nil, err
+	}
+
+	// Write tuples
+	for i := 0; i < h.SlotNum; i++ {
+		if i < h.UsedSlotsNum && h.Tuples[i] != nil {
+			err = h.Tuples[i].writeTo(buf)
+			if err != nil {
+				return nil, err
+			}
+		} else {
+			// Write empty tuple with zero-initialized fields
+			emptyTuple := Tuple{
+				Desc:   *h.Desc,
+				Fields: make([]DBValue, len(h.Desc.Fields)),
+			}
+			// Initialize each field with zero values
+			for j, field := range h.Desc.Fields {
+				switch field.Ftype {
+				case IntType:
+					emptyTuple.Fields[j] = IntField{Value: 0}
+				case StringType:
+					emptyTuple.Fields[j] = StringField{Value: ""}
+				}
+			}
+			err = emptyTuple.writeTo(buf)
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+	for buf.Len() != PageSize {
+		binary.Write(buf, binary.LittleEndian, false)
+	}
+	return buf, nil
 }
 
 // Read the contents of the HeapPage from the supplied buffer.
 func (h *heapPage) initFromBuffer(buf *bytes.Buffer) error {
-	// TODO: some code goes here
-	return fmt.Errorf("initFromBuffer not implemented") //replace me
+	// Read number of slots
+	var slotNum, usedSlotsNum int32
+	err := binary.Read(buf, binary.LittleEndian, &slotNum)
+	if err != nil {
+		return err
+	}
+	err = binary.Read(buf, binary.LittleEndian, &usedSlotsNum)
+	if err != nil {
+		return err
+	}
+
+	// Initialize the heap page
+	h.SlotNum = int(slotNum)
+	h.UsedSlotsNum = int(usedSlotsNum)
+	h.Tuples = make([]*Tuple, h.SlotNum)
+
+	// Read tuples
+	for i := 0; i < h.UsedSlotsNum; i++ {
+		tuple, err := readTupleFrom(buf, h.Desc)
+		if err != nil {
+			return err
+		}
+		h.Tuples[i] = tuple
+		tuple.Rid = RID{
+			PageNo: h.PageNo,
+			SlotNo: i,
+		}
+	}
+	return nil
 }
 
 // Return a function that iterates through the tuples of the heap page.  Be sure
@@ -115,7 +241,19 @@ func (h *heapPage) initFromBuffer(buf *bytes.Buffer) error {
 // return it. Return nil, nil when the last tuple is reached.
 func (p *heapPage) tupleIter() func() (*Tuple, error) {
 	// TODO: some code goes here
+	i := 0
 	return func() (*Tuple, error) {
-	return nil, fmt.Errorf("heap_file.Iterator not implemented") // replace me
+		for {
+			if i >= p.UsedSlotsNum {
+				return nil, nil
+			}
+			tuple := p.Tuples[i]
+			if tuple == nil {
+				i++
+				continue
+			}
+			i++
+			return tuple, nil
+		}
 	}
 }

@@ -5,10 +5,10 @@ package godb
 
 import (
 	"bytes"
+	"encoding/binary"
 	"fmt"
 	"strconv"
 	"strings"
-
 )
 
 // DBType is the type of a tuple field, in GoDB, e.g., IntType or StringType
@@ -35,7 +35,7 @@ func (t DBType) String() string {
 // was specified in the query
 type FieldType struct {
 	Fname          string
-	TableQualifier string
+	TableQualifier string //限定名，例如student.name中的student
 	Ftype          DBType
 }
 
@@ -48,9 +48,16 @@ type TupleDesc struct {
 // all of their field objects are equal and they
 // are the same length
 func (d1 *TupleDesc) equals(d2 *TupleDesc) bool {
-	// TODO: some code goes here
+	if len(d1.Fields) != len(d2.Fields) {
+		return false
+	}
+	for i, f1 := range d1.Fields {
+		f2 := d2.Fields[i]
+		if f1.Fname != f2.Fname || f1.TableQualifier != f2.TableQualifier || f1.Ftype != f2.Ftype {
+			return false
+		}
+	}
 	return true
-
 }
 
 // Given a FieldType f and a TupleDesc desc, find the best
@@ -83,8 +90,19 @@ func findFieldInTd(field FieldType, desc *TupleDesc) (int, error) {
 // another slice object does not make a copy of the contents of the slice.
 // Look at the built-in function "copy".
 func (td *TupleDesc) copy() *TupleDesc {
-	// TODO: some code goes here
-	return &TupleDesc{} //replace me
+	// Create a new TupleDesc
+	newTd := &TupleDesc{
+		Fields: make([]FieldType, len(td.Fields)),
+	}
+	// Deep copy each field
+	for i, field := range td.Fields {
+		newTd.Fields[i] = FieldType{
+			Fname:          field.Fname,
+			TableQualifier: field.TableQualifier,
+			Ftype:          field.Ftype,
+		}
+	}
+	return newTd
 }
 
 // Assign the TableQualifier of every field in the TupleDesc to be the
@@ -103,8 +121,11 @@ func (td *TupleDesc) setTableAlias(alias string) {
 // should consist of the fields of desc2
 // appended onto the fields of desc.
 func (desc *TupleDesc) merge(desc2 *TupleDesc) *TupleDesc {
-	// TODO: some code goes here
-	return &TupleDesc{}  //replace me
+	newFields := make([]FieldType, len(desc.Fields)+len(desc2.Fields))
+	copy(newFields, desc.Fields)
+	copy(newFields[len(desc.Fields):], desc2.Fields)
+
+	return &TupleDesc{Fields: newFields}
 }
 
 // ================== Tuple Methods ======================
@@ -150,8 +171,29 @@ type recordID interface {
 // May return an error if the buffer has insufficient capacity to store the
 // tuple.
 func (t *Tuple) writeTo(b *bytes.Buffer) error {
-	// TODO: some code goes here
-	return fmt.Errorf("writeTo not implemented") //replace me
+	desc := t.Desc
+	for i, field := range desc.Fields {
+		switch field.Ftype {
+		case IntType:
+			intField := t.Fields[i].(IntField)
+			intValue := intField.Value
+			if err := binary.Write(b, binary.LittleEndian, intValue); err != nil {
+				return fmt.Errorf("failed to write field %d: %w", i, err)
+			}
+		case StringType:
+			strField := t.Fields[i].(StringField)
+			str := strField.Value
+			if len(str) > StringLength {
+				str = str[:StringLength]
+			} else if len(str) < StringLength {
+				str = str + strings.Repeat("\x00", StringLength-len(str))
+			}
+			if err := binary.Write(b, binary.LittleEndian, []byte(str)); err != nil {
+				return fmt.Errorf("failed to write field %d: %w", i, err)
+			}
+		}
+	}
+	return nil
 }
 
 // Read the contents of a tuple with the specified [TupleDesc] from the
@@ -168,8 +210,31 @@ func (t *Tuple) writeTo(b *bytes.Buffer) error {
 // May return an error if the buffer has insufficent data to deserialize the
 // tuple.
 func readTupleFrom(b *bytes.Buffer, desc *TupleDesc) (*Tuple, error) {
-	// TODO: some code goes here
-	return nil, fmt.Errorf("readTupleFrom not implemented") //replace me
+	tuple := &Tuple{
+		Desc:   *desc,
+		Fields: make([]DBValue, len(desc.Fields)),
+	}
+	for i, field := range desc.Fields {
+		switch field.Ftype {
+		case IntType:
+			var intValue int64
+			if err := binary.Read(b, binary.LittleEndian, &intValue); err != nil {
+				return nil, fmt.Errorf("failed to read int field %d: %w", i, err)
+			}
+			tuple.Fields[i] = IntField{Value: intValue}
+		case StringType:
+			strBytes := make([]byte, StringLength)
+			if err := binary.Read(b, binary.LittleEndian, &strBytes); err != nil {
+				return nil, fmt.Errorf("failed to read string field %d: %w", i, err)
+			}
+			// Remove trailing zeros
+			strValue := string(bytes.TrimRight(strBytes, "\x00"))
+			tuple.Fields[i] = StringField{Value: strValue}
+		default:
+			return nil, fmt.Errorf("unknown field type for field %d", i)
+		}
+	}
+	return tuple, nil
 }
 
 // Compare two tuples for equality.  Equality means that the TupleDescs are equal
@@ -177,7 +242,25 @@ func readTupleFrom(b *bytes.Buffer, desc *TupleDesc) (*Tuple, error) {
 // the [TupleDesc.equals] method, but fields can be compared directly with equality
 // operators.
 func (t1 *Tuple) equals(t2 *Tuple) bool {
-	// TODO: some code goes here
+	d1 := &t1.Desc
+	d2 := &t2.Desc
+	if !d1.equals(d2) {
+		return false
+	}
+	f1 := t1.Fields
+	f2 := t2.Fields
+	for i := range f1 {
+
+		if d1.Fields[i].Ftype == IntType {
+			if f1[i].(IntField).Value != f2[i].(IntField).Value {
+				return false
+			}
+		} else if d1.Fields[i].Ftype == StringType {
+			if f1[i].(StringField).Value != f2[i].(StringField).Value {
+				return false
+			}
+		}
+	}
 	return true
 }
 
@@ -185,8 +268,22 @@ func (t1 *Tuple) equals(t2 *Tuple) bool {
 // appended to t1. The new tuple should have a correct TupleDesc that is created
 // by merging the descriptions of the two input tuples.
 func joinTuples(t1 *Tuple, t2 *Tuple) *Tuple {
-	// TODO: some code goes here
-	return &Tuple{}
+	if t1 == nil {
+		return t2
+	}
+	if t2 == nil {
+		return t1
+	}
+	d1 := &t1.Desc
+	d2 := &t2.Desc
+	newDesc := d1.merge(d2)
+	newFields := make([]DBValue, len(t1.Fields)+len(t2.Fields))
+	copy(newFields, t1.Fields)
+	copy(newFields[len(t1.Fields):], t2.Fields)
+	return &Tuple{
+		Desc:   *newDesc,
+		Fields: newFields,
+	}
 }
 
 type orderByState int
@@ -212,8 +309,43 @@ const (
 // Note that EvalExpr uses the [Tuple.project] method, so you will need
 // to implement projection before testing compareField.
 func (t *Tuple) compareField(t2 *Tuple, field Expr) (orderByState, error) {
-	// TODO: some code goes here
-	return OrderedEqual, fmt.Errorf("compareField not implemented") // replace me
+	val1, err := field.EvalExpr(t)
+	if err != nil {
+		return OrderedEqual, fmt.Errorf("failed to evaluate expression on tuple 1: %w", err)
+	}
+	val2, err := field.EvalExpr(t2)
+	if err != nil {
+		return OrderedEqual, fmt.Errorf("failed to evaluate expression on tuple 2: %w", err)
+	}
+
+	switch v1 := val1.(type) {
+	case IntField:
+		v2, ok := val2.(IntField)
+		if !ok {
+			return OrderedEqual, GoDBError{IncompatibleTypesError, "cannot compare different field types"}
+		}
+		if v1.Value < v2.Value {
+			return OrderedLessThan, nil
+		} else if v1.Value > v2.Value {
+			return OrderedGreaterThan, nil
+		} else {
+			return OrderedEqual, nil
+		}
+	case StringField:
+		v2, ok := val2.(StringField)
+		if !ok {
+			return OrderedEqual, GoDBError{IncompatibleTypesError, "cannot compare different field types"}
+		}
+		if v1.Value < v2.Value {
+			return OrderedLessThan, nil
+		} else if v1.Value > v2.Value {
+			return OrderedGreaterThan, nil
+		} else {
+			return OrderedEqual, nil
+		}
+	default:
+		return OrderedEqual, GoDBError{IncompatibleTypesError, "unknown field type for comparison"}
+	}
 }
 
 // Project out the supplied fields from the tuple. Should return a new Tuple
@@ -223,8 +355,18 @@ func (t *Tuple) compareField(t2 *Tuple, field Expr) (orderByState, error) {
 // do match on TableQualifier (e.g., a field  t1.name in fields should match an
 // entry t2.name in t, but only if there is not an entry t1.name in t)
 func (t *Tuple) project(fields []FieldType) (*Tuple, error) {
-	// TODO: some code goes here
-	return nil, fmt.Errorf("project not implemented")  //replace me
+	newTurple := &Tuple{
+		Desc:   TupleDesc{Fields: fields},
+		Fields: make([]DBValue, len(fields)),
+	}
+	for i, f := range fields {
+		index, err := findFieldInTd(f, &t.Desc)
+		if err != nil {
+			return nil, err
+		}
+		newTurple.Fields[i] = t.Fields[index]
+	}
+	return newTurple, nil
 }
 
 // Compute a key for the tuple to be used in a map structure

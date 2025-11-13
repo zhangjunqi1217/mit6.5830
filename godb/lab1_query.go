@@ -2,6 +2,7 @@ package godb
 
 import (
 	"fmt"
+	"os"
 )
 
 /*
@@ -24,5 +25,49 @@ Note that you should NOT pass fileName into NewHeapFile -- fileName is a CSV
 file that you should call LoadFromCSV on.
 */
 func computeFieldSum(bp *BufferPool, fileName string, td TupleDesc, sumField string) (int, error) {
-	return 0, fmt.Errorf("computeFieldSum not implemented") // replace me
+	// return 0, fmt.Errorf("computeFieldSum not implemented") // replace me
+	fname := "./test1.dat"
+	hp , err := NewHeapFile(fname,&td,bp)
+	if err != nil {
+		return 0, err
+	}
+	f, err := os.Open(fileName)
+	if err != nil {
+		return 0, err
+	}
+	err = hp.LoadFromCSV(f, true, ",", false)
+	if err != nil {
+		return 0, err
+	}
+	fieldIndex := -1
+	for i, field := range td.Fields {
+		if field.Fname == sumField {
+			if field.Ftype != IntType {
+				return 0, fmt.Errorf("field %s is not an integer field", sumField)
+			}
+			fieldIndex = i
+			break
+		}
+	}
+	if fieldIndex == -1 {
+		return 0, fmt.Errorf("field %s not found", sumField)
+	}
+	iter, err := hp.Iterator(-1)
+	if err != nil {
+		return 0, err
+	}
+	var sum int64 = 0
+	for {
+		tup, err := iter()
+		if err != nil {
+			return 0, err
+		}
+		if tup == nil {
+			break
+		}
+		field := tup.Fields[fieldIndex]
+		value := field.(IntField).Value
+		sum += value
+	}
+	return int(sum), nil
 }

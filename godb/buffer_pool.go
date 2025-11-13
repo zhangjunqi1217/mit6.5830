@@ -19,11 +19,52 @@ const (
 
 type BufferPool struct {
 	// TODO: some code goes here
+	pages     map[heapHash]Page
+	DBFiles   map[heapHash]*DBFile
+	NumPages  int
+	UsedPages int
 }
 
 // Create a new BufferPool with the specified number of pages
 func NewBufferPool(numPages int) (*BufferPool, error) {
-	return &BufferPool{}, fmt.Errorf("NewBufferPool not implemented")
+	return &BufferPool{
+		pages:     make(map[heapHash]Page),
+		DBFiles:   make(map[heapHash]*DBFile),
+		NumPages:  numPages,
+		UsedPages: 0,
+	}, nil
+}
+
+func (bp *BufferPool) insertPage(hp *heapPage, file DBFile, pageNo int, tid TransactionID, perm RWPerm) error {
+	hash := heapHash{
+		File:   file,
+		PageNo: pageNo,
+	}
+	if _, ok := bp.pages[hash]; ok {
+		return fmt.Errorf("page already exists in buffer pool")
+	}
+
+	if bp.UsedPages >= bp.NumPages {
+		// Evict a page
+		for h, p := range bp.pages {
+			if !p.isDirty() {
+				// Evict this page
+				err := file.flushPage(p)
+				if err != nil {
+					return err
+				}
+				delete(bp.pages, h)
+				bp.pages[hash] = hp
+				return nil
+			}
+		}
+		return fmt.Errorf("buffer pool is full of dirty pages; cannot evict")
+
+	} else {
+		bp.UsedPages++
+		bp.pages[hash] = hp
+		return nil
+	}
 }
 
 // Testing method -- iterate through all pages in the buffer pool
@@ -31,6 +72,14 @@ func NewBufferPool(numPages int) (*BufferPool, error) {
 // Mark pages as not dirty after flushing them.
 func (bp *BufferPool) FlushAllPages() {
 	// TODO: some code goes here
+	for _, page := range bp.pages {
+		hp, ok := page.(*heapPage)
+		if !ok {
+			continue
+		}
+		hp.HeapFile.flushPage(page)
+		page.setDirty(-1, false) // 使用一个无效的事务ID来清除脏标记
+	}
 }
 
 // Abort the transaction, releasing locks. Because GoDB is FORCE/NO STEAL, none
@@ -69,5 +118,39 @@ func (bp *BufferPool) BeginTransaction(tid TransactionID) error {
 // implement locking or deadlock detection. You will likely want to store a list
 // of pages in the BufferPool in a map keyed by the [DBFile.pageKey].
 func (bp *BufferPool) GetPage(file DBFile, pageNo int, tid TransactionID, perm RWPerm) (Page, error) {
-	return nil, fmt.Errorf("GetPage not implemented")
+	hash := heapHash{
+		File:   file,
+		PageNo: pageNo,
+	}
+	if page, ok := bp.pages[hash]; ok {
+		return page, nil
+	} else {
+		// If not found in cache, read from disk
+
+		page, err := file.readPage(pageNo)
+		if err != nil {
+			return nil, err
+		}
+		if bp.UsedPages >= bp.NumPages {
+			// Evict a page
+			for h, p := range bp.pages {
+				if !p.isDirty() {
+					// Evict this page
+					err := file.flushPage(p)
+					if err != nil {
+						return nil, err
+					}
+					delete(bp.pages, h)
+					bp.pages[hash] = page
+					return page, nil
+				}
+			}
+			return nil, fmt.Errorf("buffer pool is full of dirty pages; cannot evict")
+
+		} else {
+			bp.UsedPages++
+			bp.pages[hash] = page
+			return page, nil
+		}
+	}
 }
