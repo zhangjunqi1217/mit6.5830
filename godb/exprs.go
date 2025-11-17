@@ -67,7 +67,6 @@ func (f *FuncExpr) GetExprType() FieldType {
 		}
 	}
 	return FieldType{ft.Fname, ft.TableQualifier, fType.outType}
-
 }
 
 type FuncType struct {

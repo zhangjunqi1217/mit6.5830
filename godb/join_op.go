@@ -1,9 +1,5 @@
 package godb
 
-import (
-"fmt"
-)
-
 type EqualityJoin struct {
 	// Expressions that when applied to tuples from the left or right operators,
 	// respectively, return the value of the left or right side of the join
@@ -29,7 +25,8 @@ func NewJoin(left Operator, leftField Expr, right Operator, rightField Expr, max
 // HINT: use [TupleDesc.merge].
 func (hj *EqualityJoin) Descriptor() *TupleDesc {
 	// TODO: some code goes here
-	return &TupleDesc{} // replace me
+	// return &TupleDesc{} // replace me
+	return (*hj.left).Descriptor()
 }
 
 // Join operator implementation. This function should iterate over the results
@@ -50,6 +47,71 @@ func (hj *EqualityJoin) Descriptor() *TupleDesc {
 // out. To pass this test, you will need to use something other than a nested
 // loops join.
 func (joinOp *EqualityJoin) Iterator(tid TransactionID) (func() (*Tuple, error), error) {
-	// TODO: some code goes here
-	return nil, fmt.Errorf("EqualityJoin.Iterator not implemented") // replace me
+	leftIter, err := (*joinOp.left).Iterator(tid)
+	if err != nil {
+		return nil, err
+	}
+	rightIter, err := (*joinOp.right).Iterator(tid)
+	if err != nil {
+		return nil, err
+	}
+
+	var leftTuple *Tuple
+	var rightTuples []*Tuple
+
+	// Load all right tuples into memory (for simplicity, assuming it fits in memory)
+	for {
+		tup, err := rightIter()
+		if err != nil {
+			return nil, err
+		}
+		if tup == nil {
+			break
+		}
+		rightTuples = append(rightTuples, tup)
+	}
+
+	curRightIndex := 0
+
+	return func() (*Tuple, error) {
+		for {
+			// If leftTuple is nil, fetch the next tuple from the left iterator
+			if leftTuple == nil {
+				var err error
+				leftTuple, err = leftIter()
+				if err != nil {
+					return nil, err
+				}
+				if leftTuple == nil {
+					return nil, nil // No more tuples
+				}
+				curRightIndex = 0 // Reset right index for the new left tuple
+			}
+
+			// Iterate through right tuples
+			for curRightIndex < len(rightTuples) {
+				rightTuple := rightTuples[curRightIndex]
+				curRightIndex++
+
+				// Evaluate join condition
+				leftValue, err := joinOp.leftField.EvalExpr(leftTuple)
+				if err != nil {
+					return nil, err
+				}
+				rightValue, err := joinOp.rightField.EvalExpr(rightTuple)
+				if err != nil {
+					return nil, err
+				}
+
+				if leftValue == rightValue {
+					// Join the tuples and return the result
+					joinedTuple := joinTuples(leftTuple, rightTuple)
+					return joinedTuple, nil
+				}
+			}
+
+			// If we exhausted all right tuples, reset leftTuple to fetch the next one
+			leftTuple = nil
+		}
+	}, nil
 }
