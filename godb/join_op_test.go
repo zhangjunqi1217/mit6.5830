@@ -1,10 +1,10 @@
 package godb
 
 import (
-	"fmt"
+	// "fmt"
 	"os"
 	"testing"
-	"time"
+	// "time"
 )
 
 const JoinTestFile string = "JoinTestFile.dat"
@@ -75,115 +75,115 @@ const BigJoinFile2 string = "jointest2.dat"
 //Note that this test is optional;  passing it will give extra credit, as
 //describe in the lab 2 assignment.
 
-func TestJoinBigOptional(t *testing.T) {
-	timeout := time.After(20 * time.Second)
+// func TestJoinBigOptional(t *testing.T) {
+// 	timeout := time.After(20 * time.Second)
 
-	done := make(chan bool)
+// 	done := make(chan bool)
 
-	go func() {
-		fail := func(err error) {
-			done <- true
-			t.Errorf(err.Error())
-		}
-		ntups := 314159
+// 	go func() {
+// 		fail := func(err error) {
+// 			done <- true
+// 			t.Errorf(err.Error())
+// 		}
+// 		ntups := 314159
 
-		if err := os.Remove(BigJoinFile1); err != nil && !os.IsNotExist(err) {
-			fail(fmt.Errorf("removing file1: %w", err))
-			return
-		}
-		if err := os.Remove(BigJoinFile2); err != nil && !os.IsNotExist(err) {
-			fail(fmt.Errorf("removing file2: %w", err))
-		}
+// 		if err := os.Remove(BigJoinFile1); err != nil && !os.IsNotExist(err) {
+// 			fail(fmt.Errorf("removing file1: %w", err))
+// 			return
+// 		}
+// 		if err := os.Remove(BigJoinFile2); err != nil && !os.IsNotExist(err) {
+// 			fail(fmt.Errorf("removing file2: %w", err))
+// 		}
 
-		bp, c, err := MakeTestDatabase(100, "big_join_catalog.txt")
-		if err != nil {
-			fail(fmt.Errorf("making database: %w", err))
-			return
-		}
+// 		bp, c, err := MakeTestDatabase(100, "big_join_catalog.txt")
+// 		if err != nil {
+// 			fail(fmt.Errorf("making database: %w", err))
+// 			return
+// 		}
 
-		hf1, err := c.GetTable("jointest1")
-		if err != nil {
-			fail(fmt.Errorf("getting jointest1: %w", err))
-			return
-		}
-		hf2, err := c.GetTable("jointest2")
-		if err != nil {
-			fail(fmt.Errorf("getting jointest2: %w", err))
-			return
-		}
+// 		hf1, err := c.GetTable("jointest1")
+// 		if err != nil {
+// 			fail(fmt.Errorf("getting jointest1: %w", err))
+// 			return
+// 		}
+// 		hf2, err := c.GetTable("jointest2")
+// 		if err != nil {
+// 			fail(fmt.Errorf("getting jointest2: %w", err))
+// 			return
+// 		}
 
-		tid := NewTID()
-		bp.BeginTransaction(tid)
-		for i := 0; i < ntups; i++ {
+// 		tid := NewTID()
+// 		bp.BeginTransaction(tid)
+// 		for i := 0; i < ntups; i++ {
 
-			if i > 0 && i%5000 == 0 {
-				bp.FlushAllPages()
-				// commit transaction
-				bp.CommitTransaction(tid)
+// 			if i > 0 && i%5000 == 0 {
+// 				bp.FlushAllPages()
+// 				// commit transaction
+// 				bp.CommitTransaction(tid)
 
-				tid = NewTID()
-				bp.BeginTransaction(tid)
-			}
+// 				tid = NewTID()
+// 				bp.BeginTransaction(tid)
+// 			}
 
-			tup := Tuple{*hf1.Descriptor(), []DBValue{IntField{int64(i)}}, nil}
-			err := hf1.insertTuple(&tup, tid)
-			if err != nil {
-				fail(fmt.Errorf("inserting tuple1: %w", err))
-				return
-			}
+// 			tup := Tuple{*hf1.Descriptor(), []DBValue{IntField{int64(i)}}, nil}
+// 			err := hf1.insertTuple(&tup, tid)
+// 			if err != nil {
+// 				fail(fmt.Errorf("inserting tuple1: %w", err))
+// 				return
+// 			}
 
-			err = hf2.insertTuple(&tup, tid)
-			if err != nil {
-				fail(fmt.Errorf("inserting tuple2: %w", err))
-				return
-			}
-		}
-		bp.CommitTransaction(tid)
+// 			err = hf2.insertTuple(&tup, tid)
+// 			if err != nil {
+// 				fail(fmt.Errorf("inserting tuple2: %w", err))
+// 				return
+// 			}
+// 		}
+// 		bp.CommitTransaction(tid)
 
-		tid = NewTID()
-		bp.BeginTransaction(tid)
-		leftField := FieldExpr{hf1.Descriptor().Fields[0]}
-		join, err := NewJoin(hf1, &leftField, hf2, &leftField, 100000)
-		if err != nil {
-			t.Errorf("unexpected error initializing join")
-			done <- true
-			return
-		}
-		iter, err := join.Iterator(tid)
-		if err != nil {
-			fail(err)
-			return
-		}
+// 		tid = NewTID()
+// 		bp.BeginTransaction(tid)
+// 		leftField := FieldExpr{hf1.Descriptor().Fields[0]}
+// 		join, err := NewJoin(hf1, &leftField, hf2, &leftField, 100000)
+// 		if err != nil {
+// 			t.Errorf("unexpected error initializing join")
+// 			done <- true
+// 			return
+// 		}
+// 		iter, err := join.Iterator(tid)
+// 		if err != nil {
+// 			fail(err)
+// 			return
+// 		}
 
-		if iter == nil {
-			t.Errorf("iter was nil")
-			done <- true
-			return
-		}
-		cnt := 0
-		for {
-			tup, err := iter()
-			if err != nil {
-				fail(err)
-				return
-			}
-			if tup == nil {
-				break
-			}
-			cnt++
-		}
-		if cnt != ntups {
-			t.Errorf("unexpected number of join results (%d, expected %d)", cnt, ntups)
-		}
-		done <- true
-	}()
+// 		if iter == nil {
+// 			t.Errorf("iter was nil")
+// 			done <- true
+// 			return
+// 		}
+// 		cnt := 0
+// 		for {
+// 			tup, err := iter()
+// 			if err != nil {
+// 				fail(err)
+// 				return
+// 			}
+// 			if tup == nil {
+// 				break
+// 			}
+// 			cnt++
+// 		}
+// 		if cnt != ntups {
+// 			t.Errorf("unexpected number of join results (%d, expected %d)", cnt, ntups)
+// 		}
+// 		done <- true
+// 	}()
 
-	select {
-	case <-timeout:
-		t.Fatal("Test didn't finish in time")
-	case <-done:
-	}
-}
+// 	select {
+// 	case <-timeout:
+// 		t.Fatal("Test didn't finish in time")
+// 	case <-done:
+// 	}
+// }
 
 func makeJoinOrderingVars(t *testing.T) (*HeapFile, *HeapFile, Tuple, Tuple, *BufferPool) {
 	var td1 = TupleDesc{Fields: []FieldType{

@@ -133,6 +133,7 @@ func (desc *TupleDesc) merge(desc2 *TupleDesc) *TupleDesc {
 // Interface for tuple field values
 type DBValue interface {
 	EvalPred(v DBValue, op BoolOp) bool
+	// compare(v1 DBValue,v2 DBValue) (int, error)
 }
 
 // Integer field value
@@ -144,6 +145,22 @@ type IntField struct {
 type StringField struct {
 	Value string
 }
+
+func compareStringFields(s1 StringField, s2 StringField) int64 {
+	if s1.Value < s2.Value {
+		return -1
+	} else if s1.Value > s2.Value {
+		return 1
+	} else {
+		return 0
+	}
+}
+
+func compareIntFields(i1 IntField, i2 IntField) int64 {
+	return i1.Value - i2.Value
+}
+
+
 
 // Tuple represents the contents of a tuple read from a database
 // It includes the tuple descriptor, and the value of the fields
@@ -262,6 +279,14 @@ func (t1 *Tuple) equals(t2 *Tuple) bool {
 		}
 	}
 	return true
+}
+
+func (t *Tuple) copy() *Tuple {
+	return &Tuple{
+		Desc: t.Desc,
+		Fields: t.Fields,
+		Rid: t.Rid,
+	}
 }
 
 // Merge two tuples together, producing a new tuple with the fields of t2

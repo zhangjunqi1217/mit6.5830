@@ -47,8 +47,6 @@ func NewAggregator(emptyAggState []AggState, child Operator) *Aggregator {
 //
 // HINT: use [TupleDesc.merge] to merge the two [TupleDesc]s.
 func (a *Aggregator) Descriptor() *TupleDesc {
-	// TODO: some code goes here
-	// return &TupleDesc{} //replace me
 	return a.child.Descriptor()
 }
 
@@ -143,8 +141,6 @@ func (a *Aggregator) Iterator(tid TransactionID) (func() (*Tuple, error), error)
 //
 // If there is any error during expression evaluation, return the error.
 func extractGroupByKeyTuple(a *Aggregator, t *Tuple) (*Tuple, error) {
-	// TODO: some code goes here
-	// return &Tuple{}, fmt.Errorf("extractGroupByKeyTuple not implemented.") // replace me
 	fields := make([]DBValue, len(a.groupByFields))
 	for i, expr := range a.groupByFields {
 		val, err := expr.EvalExpr(t)
@@ -171,7 +167,6 @@ func extractGroupByKeyTuple(a *Aggregator, t *Tuple) (*Tuple, error) {
 // aggState using [aggState.Copy] on appropriate element of the a.newAggState
 // field and add the new aggState to grpAggState.
 func addTupleToGrpAggState(a *Aggregator, t *Tuple, grpAggState *[]AggState) {
-	// TODO: some code goes here
 	for i := 0; i < len(a.newAggState); i++ {
 		if (*grpAggState)[i] == nil {
 			copy := a.newAggState[i].Copy()
@@ -190,11 +185,9 @@ func addTupleToGrpAggState(a *Aggregator, t *Tuple, grpAggState *[]AggState) {
 // Then, you should get the groupByTuple and merge it with each of the AggState
 // tuples using the joinTuples function in tuple.go you wrote in lab 1.
 func getFinalizedTuplesIterator(a *Aggregator, groupByList []*Tuple, aggState map[any]*[]AggState) func() (*Tuple, error) {
-	// TODO: some code goes here
 	p := 0
 
 	return func() (*Tuple, error) {
-		// TODO: some code goes here
 		// return nil, fmt.Errorf("getFinalizedTuplesIterator not implemented.") // replace me
 		if p >= len(groupByList) {
 			return nil, nil

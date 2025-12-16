@@ -1,0 +1,4 @@
+{
+    // "go.goroot": "/Users/randyfield/Desktop/go/go", // go1.22.3
+    "go.goroot": "/opt/homebrew/Cellar/go@1.23/1.23.12/libexec", // go1.20.14
+}

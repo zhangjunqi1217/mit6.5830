@@ -21,11 +21,11 @@
             "type": "go",
             "request": "launch",
             "mode": "test",
-            "program": "godb/",
+            "program": "/Users/bytedance/Documents/go-db-2024/main.go",
             "env": {},
             "args": ["-test.v"],
             "showLog": false,
-        }       
+        }
 
     ]
 }

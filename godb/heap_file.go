@@ -345,14 +345,20 @@ func (f *HeapFile) Iterator(tid TransactionID) (func() (*Tuple, error), error) {
 			if currentPageNo >= f.NumPages() {
 				return nil, nil
 			}
-			hp := f.HeapPages[currentPageNo]
-			if hp == nil {
+			page,err := f.bufPool.GetPage(f,currentPageNo,tid,ReadPerm)
+			if err != nil {
 				continue
 			}
+			hp := page.(*heapPage)
 			if currentSlotNo < hp.UsedSlotsNum {
 				tuple := hp.Tuples[currentSlotNo]
 				currentSlotNo++
-				return tuple, nil
+				if tuple != nil {
+					tuple.Rid = RID{PageNo: currentPageNo, SlotNo: currentSlotNo - 1}
+					return tuple, nil
+				} else {
+					continue
+				}
 			}
 			currentPageNo++
 			currentSlotNo = 0
